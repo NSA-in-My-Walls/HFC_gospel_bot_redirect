@@ -46,7 +46,7 @@ REDIRECT_URL = os.environ.get(
 @app.route('/saved')
 def track_and_redirect():
     ts = time.time()
-    ip = request.remote_addr
+    ip = request.headers.get('X-Forwarded-For', request.remote_addr).split(',')[0].strip()
     ua = request.headers.get('User-Agent', '')
 
     # 1) Dedupe by cookie: only log the first hit per session
