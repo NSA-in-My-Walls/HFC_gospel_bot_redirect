@@ -6,8 +6,9 @@ import requests
 
 app = Flask(__name__)
 
+
 # Configuration
-DB_PATH = "click_log.db"
+DB_PATH = "data\click_log.db"
 REDIRECT_URL = "https://houstonfaithchurch.com/believer-basics/do-you-know-jesus/"
 GIST_ID = os.environ.get("GIST_ID")
 GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN")
@@ -68,12 +69,8 @@ def backup_to_gist():
     except Exception as e:
         app.logger.error(f"Exception during gist backup: {e}")
 
-@app.before_first_request
-def startup():
-    # 1) Restore previous clicks (if you have a GIST backup configured)
-    restore_from_gist()
-    # 2) Create the clicks table if it doesn’t exist
-    init_db()
+restore_from_gist()
+init_db()
 
 @app.route("/saved")
 def track_and_redirect():
@@ -91,9 +88,6 @@ def track_and_redirect():
     return redirect(REDIRECT_URL, code=302)
 
 if __name__ == "__main__":
-    restore_from_gist()
-    init_db()
-    # Grab Render’s assigned port (defaults to 5000 locally)
+    # Local-only: starts Flask’s dev server, Gunicorn will skip this block
     port = int(os.environ.get("PORT", 5000))
-    # Listen on 0.0.0.0 so Render’s proxy can reach you
     app.run(host="0.0.0.0", port=port, debug=True)
