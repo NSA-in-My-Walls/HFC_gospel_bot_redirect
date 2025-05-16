@@ -27,7 +27,7 @@ with conn.cursor() as cur:
 # Redirect target
 REDIRECT_URL = os.environ.get(
     'REDIRECT_URL',
-    'https://www.youtube.com/watch?v=c-L7akD6cMQ&t=3198s'
+    'https://houstonfaithchurch.com/believer-basics/do-you-know-jesus/'
 )
 
 @app.route('/saved')
