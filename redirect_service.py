@@ -1,6 +1,6 @@
 import os
 import time
-from flask import Flask, redirect, request
+from flask import Flask, redirect, request, make_response
 import psycopg2
 from psycopg2.extras import RealDictCursor
 
@@ -36,7 +36,6 @@ with conn.cursor() as cur:
         ip         TEXT,
         user_agent TEXT
     );""")
-
     conn.commit()
 
 REDIRECT_URL = os.environ.get(
@@ -50,24 +49,34 @@ def track_and_redirect():
     ip = request.remote_addr
     ua = request.headers.get('User-Agent', '')
 
-    # skip logging if this is a known previewer/crawler
-    if any(bot in ua for bot in [
-        'Slackbot', 'facebookexternalhit', 'Twitterbot', 'Discordbot',
-        'LinkedInBot', 'WhatsApp', 'curl', 'wget'
-    ]):
+    # 1) Dedupe by cookie: only log the first hit per session
+    if request.cookies.get('hfc_clicked'):
         return redirect(REDIRECT_URL, code=302)
 
-    # real user → log it
+    # 2) Skip known previewers / crawlers
+    skip_bots = [
+        'Slackbot', 'facebookexternalhit', 'Twitterbot', 'Discordbot',
+        'LinkedInBot', 'WhatsApp', 'curl', 'wget'
+    ]
+    if any(bot in ua for bot in skip_bots):
+        return redirect(REDIRECT_URL, code=302)
+
+    # 3) Real user → log it
     with conn.cursor() as cur:
         cur.execute(
             "INSERT INTO clicks (ts, ip, user_agent) VALUES (to_timestamp(%s), %s, %s)",
             (ts, ip, ua)
         )
         conn.commit()
-    return redirect(REDIRECT_URL, code=302)
 
+    # 4) Respond with a cookie to prevent duplicate logs in this session
+    resp = make_response(redirect(REDIRECT_URL, code=302))
+    resp.set_cookie('hfc_clicked', '1', max_age=60*60)  # cookie valid for 1 hour
+    return resp
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0',
-            port=int(os.environ.get('PORT', 5000)),
-            debug=True)
+    app.run(
+        host='0.0.0.0',
+        port=int(os.environ.get('PORT', 5000)),
+        debug=True
+    )
