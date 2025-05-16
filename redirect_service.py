@@ -6,14 +6,14 @@ import requests
 
 app = Flask(__name__)
 
-# Constants and config
+# Configuration
 DB_PATH = "click_log.db"
 REDIRECT_URL = "https://houstonfaithchurch.com/believer-basics/do-you-know-jesus/"
-# GitHub Gist settings for auto-backup
 GIST_ID = os.environ.get("GIST_ID")
 GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN")
 
-# Ensure database exists
+# Initialize or restore database
+
 def init_db():
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
@@ -23,12 +23,36 @@ def init_db():
             ip TEXT,
             user_agent TEXT
         )
-    """)
+    """
+    )
     conn.commit()
     conn.close()
 
-# Dump SQLite to SQL text and push to GitHub Gist
+
+def restore_from_gist():
+    """Restore click log from GitHub Gist backup before starting the app."""
+    if not GIST_ID or not GITHUB_TOKEN:
+        return
+    try:
+        url = f"https://api.github.com/gists/{GIST_ID}"
+        headers = {"Authorization": f"token {GITHUB_TOKEN}"}
+        r = requests.get(url, headers=headers)
+        r.raise_for_status()
+        files = r.json().get("files", {})
+        if "click_backup.sql" not in files:
+            return
+        raw_url = files["click_backup.sql"]["raw_url"]
+        sql = requests.get(raw_url).text
+        conn = sqlite3.connect(DB_PATH)
+        conn.executescript(sql)
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        app.logger.error(f"Exception during gist restore: {e}")
+
+
 def backup_to_gist():
+    """Backup click log to GitHub Gist after each redirect."""
     if not GIST_ID or not GITHUB_TOKEN:
         return
     try:
@@ -46,22 +70,21 @@ def backup_to_gist():
 
 @app.route("/saved")
 def track_and_redirect():
-    # Log the click
+    """Log a click and redirect to the salvation resource."""
+    ts = time.time()
     ip = request.remote_addr
     user_agent = request.headers.get("User-Agent", "")
-    ts = time.time()
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
     c.execute("INSERT INTO clicks VALUES (?, ?, ?)", (ts, ip, user_agent))
     conn.commit()
     conn.close()
 
-    # Auto-backup to GitHub Gist
     backup_to_gist()
-
-    # Redirect user
     return redirect(REDIRECT_URL, code=302)
 
 if __name__ == "__main__":
+    # On startup, restore previous clicks and ensure DB schema
+    restore_from_gist()
     init_db()
     app.run(debug=True, port=int(os.environ.get("PORT", 5000)))
