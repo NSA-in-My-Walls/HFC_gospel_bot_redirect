@@ -68,6 +68,13 @@ def backup_to_gist():
     except Exception as e:
         app.logger.error(f"Exception during gist backup: {e}")
 
+@app.before_first_request
+def startup():
+    # 1) Restore previous clicks (if you have a GIST backup configured)
+    restore_from_gist()
+    # 2) Create the clicks table if it doesn’t exist
+    init_db()
+
 @app.route("/saved")
 def track_and_redirect():
     """Log a click and redirect to the salvation resource."""
