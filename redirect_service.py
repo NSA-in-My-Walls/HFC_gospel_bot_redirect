@@ -7,8 +7,7 @@ from psycopg2.extras import RealDictCursor
 
 app = Flask(__name__)
 
-# Connect once, enable autocommit so one failed statement
-# won’t taint the transaction, and run migrations
+# Connect once, enable autocommit
 DATABASE_URL = os.environ['DATABASE_URL']
 conn = psycopg2.connect(DATABASE_URL, sslmode='require')
 conn.autocommit = True
@@ -32,15 +31,16 @@ with conn.cursor() as cur:
         error   TEXT
     );""")
 
-    # Clicks table now includes lat/lon
+    # Ensure clicks table exists
     cur.execute("""
     CREATE TABLE IF NOT EXISTS clicks (
         ts         TIMESTAMPTZ,
         ip         TEXT,
-        user_agent TEXT,
-        lat        DOUBLE PRECISION,
-        lon        DOUBLE PRECISION
+        user_agent TEXT
     );""")
+    # Add lat/lon columns if missing
+    cur.execute("ALTER TABLE clicks ADD COLUMN IF NOT EXISTS lat DOUBLE PRECISION;")
+    cur.execute("ALTER TABLE clicks ADD COLUMN IF NOT EXISTS lon DOUBLE PRECISION;")
 
 REDIRECT_URL = os.environ.get(
     'REDIRECT_URL',
@@ -50,23 +50,20 @@ REDIRECT_URL = os.environ.get(
 @app.route('/saved')
 def track_and_redirect():
     ts = time.time()
-    # Get real client IP (respecting proxies)
     ip = request.headers.get('X-Forwarded-For', request.remote_addr).split(',')[0].strip()
     ua = request.headers.get('User-Agent', '')
 
-    # 1) Dedupe by cookie
+    # Cookie dedupe
     if request.cookies.get('hfc_clicked'):
         return redirect(REDIRECT_URL, code=302)
 
-    # 2) Skip known previewers/crawlers
-    skip_bots = [
-        'Slackbot', 'facebookexternalhit', 'Twitterbot',
-        'Discordbot', 'LinkedInBot', 'WhatsApp', 'curl', 'wget'
-    ]
+    # Skip bots
+    skip_bots = ['Slackbot','facebookexternalhit','Twitterbot','Discordbot',
+                 'LinkedInBot','WhatsApp','curl','wget']
     if any(bot in ua for bot in skip_bots):
         return redirect(REDIRECT_URL, code=302)
 
-    # 3) One-shot geolocation
+    # Geolocate IP
     lat = lon = None
     try:
         resp = requests.get(f"https://ipapi.co/{ip}/json/")
@@ -76,22 +73,17 @@ def track_and_redirect():
     except Exception:
         pass
 
-    # 4) Log click with lat/lon
+    # Log click including lat/lon
     with conn.cursor() as cur:
         cur.execute(
-            "INSERT INTO clicks (ts, ip, user_agent, lat, lon) "
-            "VALUES (to_timestamp(%s), %s, %s, %s, %s)",
+            "INSERT INTO clicks (ts, ip, user_agent, lat, lon) VALUES (to_timestamp(%s), %s, %s, %s, %s)",
             (ts, ip, ua, lat, lon)
         )
 
-    # 5) Set cookie and redirect
+    # Set cookie and redirect
     resp = make_response(redirect(REDIRECT_URL, code=302))
-    resp.set_cookie('hfc_clicked', '1', max_age=3600)
+    resp.set_cookie('hfc_clicked','1', max_age=3600)
     return resp
 
 if __name__ == '__main__':
-    app.run(
-        host='0.0.0.0',
-        port=int(os.environ.get('PORT', 5000)),
-        debug=True
-    )
+    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)), debug=True)
