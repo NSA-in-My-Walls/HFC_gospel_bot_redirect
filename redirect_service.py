@@ -50,14 +50,22 @@ def track_and_redirect():
     ip = request.remote_addr
     ua = request.headers.get('User-Agent', '')
 
+    # skip logging if this is a known previewer/crawler
+    if any(bot in ua for bot in [
+        'Slackbot', 'facebookexternalhit', 'Twitterbot', 'Discordbot',
+        'LinkedInBot', 'WhatsApp', 'curl', 'wget'
+    ]):
+        return redirect(REDIRECT_URL, code=302)
+
+    # real user → log it
     with conn.cursor() as cur:
         cur.execute(
             "INSERT INTO clicks (ts, ip, user_agent) VALUES (to_timestamp(%s), %s, %s)",
             (ts, ip, ua)
         )
         conn.commit()
-
     return redirect(REDIRECT_URL, code=302)
+
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0',
