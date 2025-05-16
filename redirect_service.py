@@ -3,8 +3,10 @@ import time
 import requests
 from flask import Flask, redirect, request, make_response
 import psycopg2
+import logging
 
 app = Flask(__name__)
+app.logger.setLevel(logging.INFO)
 
 # Connect & enable autocommit
 DATABASE_URL = os.environ['DATABASE_URL']
@@ -51,15 +53,15 @@ def track_and_redirect():
         if r.status_code == 200 and ',' in r.text:
             lat_str, lon_str = r.text.strip().split(',')
             lat, lon = float(lat_str), float(lon_str)
-            print(f"✅ Geolocated {ip} via latlong → {lat},{lon}")
+            app.logger.info(f"✅ Geolocated {ip} via latlong → {lat},{lon}")
         else:
             # fallback to JSON
             rj = requests.get(f"https://ipapi.co/{ip}/json/", timeout=2).json()
             lat = rj.get('latitude')
             lon = rj.get('longitude')
-            print(f"✅ Geolocated {ip} via JSON → {lat},{lon}")
+            app.logger.info(f"✅ Geolocated {ip} via JSON → {lat},{lon}")
     except Exception as e:
-        print(f"⚠️ Geolocation failed for {ip}: {e}")
+        app.logger.info(f"⚠️ Geolocation failed for {ip}: {e}")
 
     # 4) Insert with whatever lat/lon we have
     with conn.cursor() as cur:
@@ -68,7 +70,7 @@ def track_and_redirect():
             "VALUES (to_timestamp(%s), %s, %s, %s, %s)",
             (ts, ip, ua, lat, lon)
         )
-        print(f"📝 Logged click: ip={ip} lat={lat} lon={lon}")
+        app.logger.info(f"📝 Logged click: ip={ip} lat={lat} lon={lon}")
 
     # 5) Set cookie & redirect
     resp = make_response(redirect(REDIRECT_URL, code=302))
