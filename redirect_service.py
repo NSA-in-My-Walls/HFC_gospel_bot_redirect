@@ -1,5 +1,6 @@
 import os
 import time
+import requests
 from flask import Flask, redirect, request, make_response
 import psycopg2
 from psycopg2.extras import RealDictCursor
@@ -29,12 +30,14 @@ with conn.cursor() as cur:
         error   TEXT
     );""")
 
-    # clicks table
+    # clicks table now includes lat/lon
     cur.execute("""
     CREATE TABLE IF NOT EXISTS clicks (
         ts         TIMESTAMPTZ,
         ip         TEXT,
-        user_agent TEXT
+        user_agent TEXT,
+        lat        DOUBLE PRECISION,
+        lon        DOUBLE PRECISION
     );""")
     conn.commit()
 
@@ -46,6 +49,7 @@ REDIRECT_URL = os.environ.get(
 @app.route('/saved')
 def track_and_redirect():
     ts = time.time()
+    # get real client IP (support proxies)
     ip = request.headers.get('X-Forwarded-For', request.remote_addr).split(',')[0].strip()
     ua = request.headers.get('User-Agent', '')
 
@@ -61,17 +65,29 @@ def track_and_redirect():
     if any(bot in ua for bot in skip_bots):
         return redirect(REDIRECT_URL, code=302)
 
-    # 3) Real user → log it
+    # 3) Geolocate the IP once
+    lat = lon = None
+    try:
+        resp = requests.get(f"https://ipapi.co/{ip}/json/")
+        data = resp.json()
+        lat = data.get('latitude')
+        lon = data.get('longitude')
+    except Exception:
+        # silently ignore lookup failures
+        pass
+
+    # 4) Real user → log it with lat/lon
     with conn.cursor() as cur:
         cur.execute(
-            "INSERT INTO clicks (ts, ip, user_agent) VALUES (to_timestamp(%s), %s, %s)",
-            (ts, ip, ua)
+            "INSERT INTO clicks (ts, ip, user_agent, lat, lon) "
+            "VALUES (to_timestamp(%s), %s, %s, %s, %s)",
+            (ts, ip, ua, lat, lon)
         )
         conn.commit()
 
-    # 4) Respond with a cookie to prevent duplicate logs in this session
+    # 5) Respond with a cookie to prevent duplicates this session
     resp = make_response(redirect(REDIRECT_URL, code=302))
-    resp.set_cookie('hfc_clicked', '1', max_age=60*60)  # cookie valid for 1 hour
+    resp.set_cookie('hfc_clicked', '1', max_age=60*60)  # 1 hour
     return resp
 
 if __name__ == '__main__':
