@@ -84,7 +84,9 @@ def track_and_redirect():
     return redirect(REDIRECT_URL, code=302)
 
 if __name__ == "__main__":
-    # On startup, restore previous clicks and ensure DB schema
     restore_from_gist()
     init_db()
-    app.run(debug=True, port=int(os.environ.get("PORT", 5000)))
+    # Grab Render’s assigned port (defaults to 5000 locally)
+    port = int(os.environ.get("PORT", 5000))
+    # Listen on 0.0.0.0 so Render’s proxy can reach you
+    app.run(host="0.0.0.0", port=port, debug=True)
