@@ -4,7 +4,6 @@ import requests
 import sys
 from flask import Flask, redirect, request, make_response
 import psycopg2
-from psycopg2.extras import RealDictCursor
 
 app = Flask(__name__)
 
@@ -47,25 +46,14 @@ def track_and_redirect():
     if any(bot in ua for bot in skip_bots):
         return redirect(REDIRECT_URL, code=302)
 
-    # 3) Lookup via freegeoip.app (no extra libs)
-    lat = lon = None
-    try:
-        resp = requests.get(f"https://freegeoip.app/json/{ip}", timeout=2)
-        data = resp.json()
-        lat = data.get('latitude')
-        lon = data.get('longitude')
-        sys.stderr.write(f"ℹ️ Got coords for {ip}: {lat}, {lon}\n"); sys.stderr.flush()
-    except Exception as e:
-        sys.stderr.write(f"⚠️ Geo lookup failed for {ip}: {e}\n"); sys.stderr.flush()
-
     # 4) Log click
     with conn.cursor() as cur:
         cur.execute(
-            "INSERT INTO clicks (ts, ip, user_agent, lat, lon) "
-            "VALUES (to_timestamp(%s), %s, %s, %s, %s)",
-            (ts, ip, ua, lat, lon)
+            "INSERT INTO clicks (ts, ip, user_agent) "
+            "VALUES (to_timestamp(%s), %s, %s)",
+            (ts, ip, ua)
         )
-        sys.stderr.write(f"📝 Logged click: ip={ip} lat={lat} lon={lon}\n"); sys.stderr.flush()
+
 
     # 5) Set cookie & redirect
     resp = make_response(redirect(REDIRECT_URL, code=302))
