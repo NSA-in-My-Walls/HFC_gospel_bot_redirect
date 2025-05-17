@@ -46,12 +46,21 @@ def track_and_redirect():
     if any(bot in ua for bot in skip_bots):
         return redirect(REDIRECT_URL, code=302)
 
-    # 4) Log click
+    # 3) Grab any browser-supplied coords
+    raw_lat = request.args.get('lat')
+    raw_lon = request.args.get('lon')
+    try:
+        lat = float(raw_lat) if raw_lat else None
+        lon = float(raw_lon) if raw_lon else None
+    except ValueError:
+        lat = lon = None
+
+    # 4) Log click (including lat/lon if provided)
     with conn.cursor() as cur:
         cur.execute(
-            "INSERT INTO clicks (ts, ip, user_agent) "
-            "VALUES (to_timestamp(%s), %s, %s)",
-            (ts, ip, ua)
+            "INSERT INTO clicks (ts, ip, user_agent, lat, lon) "
+            "VALUES (to_timestamp(%s), %s, %s, %s, %s)",
+            (ts, ip, ua, lat, lon)
         )
 
 
