@@ -50,21 +50,24 @@ def track_and_redirect():
     if any(bot in ua for bot in skip_bots):
         return redirect(REDIRECT_URL, code=302)
 
-    # 3) Geolocate IP: try text first, then JSON
+    # 3) Geolocate IP via JSON (simpler, more inspectable)
     lat = lon = None
     try:
-        r = requests.get(f"https://ipapi.co/{ip}/latlong/", timeout=2)
-        if r.status_code == 200 and ',' in r.text:
-            lat_str, lon_str = r.text.strip().split(',')
-            lat, lon = float(lat_str), float(lon_str)
+        resp = requests.get(f"https://ipapi.co/{ip}/json/", timeout=2)
+        data = resp.json()
+        # ipapi.co returns 'latitude'/'longitude' (or error flags)
+        raw_lat = data.get('latitude') or data.get('lat')
+        raw_lon = data.get('longitude') or data.get('lon')
+        if raw_lat is not None and raw_lon is not None:
+            lat, lon = float(raw_lat), float(raw_lon)
         else:
-            rj = requests.get(f"https://ipapi.co/{ip}/json/", timeout=2).json()
-            lat = rj.get('latitude')
-            lon = rj.get('longitude')
+            # log the full payload so you can see rate-limit or error keys
+            sys.stderr.write(f"⚠️ Geo lookup for {ip} returned no coords: {data}\n")
+            sys.stderr.flush()
     except Exception as e:
-        sys.stderr.write(f"⚠️ Geo lookup failed for {ip}: {e}\n")
+        sys.stderr.write(f"⚠️ Geo lookup exception for {ip}: {e}\n")
         sys.stderr.flush()
-
+        
     # 4) Real user -> log it with whatever lat/lon we got
     with conn.cursor() as cur:
         cur.execute(
