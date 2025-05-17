@@ -5,8 +5,10 @@ import sys
 from flask import Flask, redirect, request, make_response
 import psycopg2
 from psycopg2.extras import RealDictCursor
+from werkzeug.middleware.proxy_fix import ProxyFix
 
 app = Flask(__name__)
+app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1)
 
 # connect once, enable autocommit so each INSERT stands alone
 DATABASE_URL = os.environ['DATABASE_URL']
@@ -33,11 +35,7 @@ REDIRECT_URL = os.environ.get(
 @app.route('/saved')
 def track_and_redirect():
     ts = time.time()
-    ip = (
-        request.headers.get('X-Forwarded-For')
-        or request.headers.get('X-Real-IP')
-        or request.remote_addr
-    ).split(',')[0].strip()
+    ip = request.remote_addr
     sys.stderr.write(f"🔍 Geo lookup for IP: {ip}\n")
     sys.stderr.flush()
     ua = request.headers.get('User-Agent','')
