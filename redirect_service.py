@@ -33,7 +33,13 @@ REDIRECT_URL = os.environ.get(
 @app.route('/saved')
 def track_and_redirect():
     ts = time.time()
-    ip = request.headers.get('X-Forwarded-For', request.remote_addr).split(',')[0].strip()
+    ip = (
+        request.headers.get('X-Forwarded-For')
+        or request.headers.get('X-Real-IP')
+        or request.remote_addr
+    ).split(',')[0].strip()
+    sys.stderr.write(f"🔍 Geo lookup for IP: {ip}\n")
+    sys.stderr.flush()
     ua = request.headers.get('User-Agent','')
 
     # 1) Dedupe by cookie
